@@ -72,7 +72,6 @@ func TestTxProposalResponseFilter(t *testing.T) {
 }
 
 func TestQuery(t *testing.T) {
-
 	chClient := setupChannelClient(nil, t)
 
 	_, err := chClient.Query(Request{})
@@ -385,7 +384,6 @@ func TestTransactionValidationError(t *testing.T) {
 }
 
 func TestTransactionTimeout(t *testing.T) {
-
 	mockEventService := fcmocks.NewMockEventService()
 	mockEventService.Timeout = true
 	testPeer1 := fcmocks.NewMockPeer("Peer1", "http://peer1.com")
@@ -464,11 +462,10 @@ func TestMultiErrorPropogation(t *testing.T) {
 	assert.True(t, ok, "Expected status error")
 	assert.EqualValues(t, status.MultipleErrors, status.ToSDKStatusCode(statusError.Code))
 	assert.Equal(t, status.ClientStatus, statusError.Group)
-	assert.Equal(t, "Multiple errors occurred: \nTest Error\nTest Error", statusError.Message, "Expected multi error message")
+	assert.Equal(t, "Multiple errors occurred: - Test Error - Test Error", statusError.Message, "Expected multi error message")
 }
 
 func TestDiscoveryGreylist(t *testing.T) {
-
 	testPeer1 := fcmocks.NewMockPeer("Peer1", "http://peer1.com")
 	testPeer1.Error = status.New(status.EndorserClientStatus,
 		status.ConnectionFailed.ToInt32(), "test", []interface{}{testPeer1.URL()})

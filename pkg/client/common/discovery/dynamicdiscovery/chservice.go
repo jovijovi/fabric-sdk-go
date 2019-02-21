@@ -17,6 +17,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	accessDenied = "access denied"
+)
+
 // ChannelService implements a dynamic Discovery Service that queries
 // Fabric's Discovery service for information about the peers that
 // are currently joined to the given channel.
@@ -76,15 +80,12 @@ func (s *ChannelService) queryPeers() ([]fab.Peer, error) {
 }
 
 func (s *ChannelService) getTargets(ctx contextAPI.Client) ([]fab.PeerConfig, error) {
-	chPeers, ok := ctx.EndpointConfig().ChannelPeers(s.channelID)
-	if !ok {
-		return nil, errors.Errorf("failed to get channel peer configs for channel [%s]", s.channelID)
+	chPeers := ctx.EndpointConfig().ChannelPeers(s.channelID)
+	if len(chPeers) == 0 {
+		return nil, errors.Errorf("no channel peers configured for channel [%s]", s.channelID)
 	}
 
-	chConfig, ok := ctx.EndpointConfig().ChannelConfig(s.channelID)
-	if !ok {
-		return nil, errors.Errorf("failed to get channel endpoint configs for channel [%s]", s.channelID)
-	}
+	chConfig := ctx.EndpointConfig().ChannelConfig(s.channelID)
 
 	//pick number of peers given in channel policy
 	return random.PickRandomNPeerConfigs(chPeers, chConfig.Policies.Discovery.MaxTargets), nil
@@ -104,8 +105,8 @@ func (s *ChannelService) evaluate(ctx contextAPI.Client, responses []fabdiscover
 	for _, response := range responses {
 		endpoints, err := response.ForChannel(s.channelID).Peers()
 		if err != nil {
-			lastErr = errors.Wrap(err, "error getting peers from discovery response")
-			logger.Warn(lastErr.Error())
+			lastErr = newDiscoveryError(err)
+			logger.Warnf("error getting peers from discovery response: %s", lastErr)
 			continue
 		}
 		return s.asPeers(ctx, endpoints), nil
@@ -139,4 +140,16 @@ type peerEndpoint struct {
 
 func (p *peerEndpoint) BlockHeight() uint64 {
 	return p.blockHeight
+}
+
+type discoveryError struct {
+	error
+}
+
+func newDiscoveryError(cause error) *discoveryError {
+	return &discoveryError{error: cause}
+}
+
+func (e *discoveryError) IsFatal() bool {
+	return e.Error() == accessDenied
 }

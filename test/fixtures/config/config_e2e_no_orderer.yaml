@@ -44,7 +44,7 @@ client:
       # Specific to the underlying KeyValueStore that backs the crypto key store.
       path: /tmp/msp
 
-   # BCCSP config for the client. Used by GO SDK.
+  # [Optional] BCCSP config for the client. Used by GO SDK.
   BCCSP:
     security:
      enabled: true
@@ -136,6 +136,7 @@ organizations:
 peers:
   peer0.org1.example.com:
     # this URL is used to send endorsement and query requests
+    # [Optional] Default: Infer from hostname
     url: peer0.org1.example.com:7051
 
     #TODO to be moved to high level, common for all grpc connections

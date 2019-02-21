@@ -26,16 +26,17 @@ DOCKER_CMD         ?= docker
 DOCKER_COMPOSE_CMD ?= docker-compose
 
 # Fabric versions used in the Makefile
-FABRIC_STABLE_VERSION           := 1.2.0
-FABRIC_STABLE_VERSION_MINOR     := 1.2
+FABRIC_STABLE_VERSION           := 1.4.0
+FABRIC_STABLE_VERSION_MINOR     := 1.4
 FABRIC_STABLE_VERSION_MAJOR     := 1
-FABRIC_BASEIMAGE_STABLE_VERSION := 0.4.10
+FABRIC_BASEIMAGE_STABLE_VERSION := 0.4.14
 
 FABRIC_PRERELEASE_VERSION       :=
-FABRIC_PREV_VERSION             := 1.1.0
-FABRIC_DEVSTABLE_VERSION_MINOR  := 1.3
+FABRIC_PRERELEASE_VERSION_MINOR :=
+FABRIC_PREV_VERSION             := 1.3.0
+FABRIC_PREV_VERSION_MINOR       := 1.3
+FABRIC_DEVSTABLE_VERSION_MINOR  := 1.4
 FABRIC_DEVSTABLE_VERSION_MAJOR  := 1
-FABRIC_PREV_VERSION_MINOR       := 1.1
 
 # Build flags (overridable)
 GO_LDFLAGS                 ?=
@@ -68,9 +69,9 @@ FABRIC_DEV_REGISTRY_PRE_CMD ?= docker login -u docker -p docker nexus3.hyperledg
 
 # Upstream fabric patching (overridable)
 THIRDPARTY_FABRIC_CA_BRANCH ?= master
-THIRDPARTY_FABRIC_CA_COMMIT ?= 54f3bcfd95cf028baac9792eee426ab793dc80bc
+THIRDPARTY_FABRIC_CA_COMMIT ?= v1.4.0
 THIRDPARTY_FABRIC_BRANCH    ?= master
-THIRDPARTY_FABRIC_COMMIT    ?= 89eb2cbe445e452daa8d008598352fe483f23071
+THIRDPARTY_FABRIC_COMMIT    ?= v1.4.0
 
 # Force removal of images in cleanup (overridable)
 FIXTURE_DOCKER_REMOVE_FORCE ?= false
@@ -98,7 +99,7 @@ FABRIC_CODELEVEL_TAG            ?= $(FABRIC_STABLE_CODELEVEL_TAG)
 # Code level version targets
 FABRIC_STABLE_CODELEVEL_VER     := v$(FABRIC_STABLE_VERSION_MINOR)
 FABRIC_PREV_CODELEVEL_VER       := v$(FABRIC_PREV_VERSION_MINOR)
-FABRIC_PRERELEASE_CODELEVEL_VER := v$(FABRIC_PRERELEASE_VERSION)
+FABRIC_PRERELEASE_CODELEVEL_VER := v$(FABRIC_PRERELEASE_VERSION_MINOR)
 FABRIC_DEVSTABLE_CODELEVEL_VER  := v$(FABRIC_DEVSTABLE_VERSION_MINOR)
 FABRIC_CODELEVEL_VER            ?= $(FABRIC_STABLE_CODELEVEL_VER)
 FABRIC_CRYPTOCONFIG_VER         ?= v$(FABRIC_STABLE_VERSION_MAJOR)
@@ -235,35 +236,39 @@ export DOCKER_COMPOSE_CMD
 export FABRIC_SDKGO_TESTRUN_ID
 
 .PHONY: all
-all: depend-noforce license unit-test integration-test
+all: version depend-noforce license unit-test integration-test
+
+.PHONY: version
+version:
+	@$(TEST_SCRIPTS_PATH)/check_version.sh
 
 .PHONY: depend
-depend:
+depend: version
 	@$(TEST_SCRIPTS_PATH)/dependencies.sh -f
 
 .PHONY: depend-noforce
-depend-noforce:
+depend-noforce: version
 ifeq ($(FABRIC_SDKGO_DEPEND_INSTALL),true)
 	@$(TEST_SCRIPTS_PATH)/dependencies.sh
 endif
 
 .PHONY: checks
-checks: depend-noforce license check-dep lint
+checks: version depend-noforce license check-dep lint
 
 .PHONY: license
-license:
+license: version
 	@$(TEST_SCRIPTS_PATH)/check_license.sh
 
 .PHONY: lint
-lint: populate-noforce
+lint: version populate-noforce
 	@LINT_CHANGED_ONLY=true $(TEST_SCRIPTS_PATH)/check_lint.sh
 
 .PHONY: lint-all
-lint-all: populate-noforce
+lint-all: version populate-noforce
 	@$(TEST_SCRIPTS_PATH)/check_lint.sh
 
 .PHONY: check-dep
-check-dep:
+check-dep: version
 	@dep check -skip-vendor
 
 .PHONY: build-softhsm2-image
@@ -303,20 +308,18 @@ unit-tests-pkcs11: clean-tests depend-noforce populate-noforce license
 integration-tests-stable: clean-tests depend-noforce populate-noforce
 	@. $(FIXTURE_DOCKERENV_PATH)/stable-env.sh && \
 	    . $(FIXTURE_CRYPTOCONFIG_PATH)/env.sh && \
-		$(FABRIC_DEV_REGISTRY_PRE_CMD) && \
-		cd $(FIXTURE_DOCKERENV_PATH) && \
-		FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) $(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) pull $(DOCKER_COMPOSE_PULL_FLAGS) && \
-		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) \
+	    cd $(FIXTURE_DOCKERENV_PATH) && \
+		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) \
 		GO_TESTFLAGS="$(GO_TESTFLAGS_INTEGRATION)" \
 		$(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) -f docker-compose-nopkcs11-test.yaml up $(DOCKER_COMPOSE_UP_TEST_FLAGS)
-	@cd $(FIXTURE_DOCKERENV_PATH) && FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) $(FIXTURE_SCRIPTS_PATH)/check_status.sh "$(BASE_DOCKER_COMPOSE_FILES) -f ./docker-compose-nopkcs11-test.yaml"
+	@cd $(FIXTURE_DOCKERENV_PATH) && FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) $(FIXTURE_SCRIPTS_PATH)/check_status.sh "$(BASE_DOCKER_COMPOSE_FILES) -f ./docker-compose-nopkcs11-test.yaml"
 
 .PHONY: integration-tests-prev
 integration-tests-prev: clean-tests depend-noforce populate-noforce populate-fixtures-prev-noforce
 	@. $(FIXTURE_DOCKERENV_PATH)/prev-env.sh && \
 		. $(FIXTURE_CRYPTOCONFIG_PATH)/env.sh && \
 		cd $(FIXTURE_DOCKERENV_PATH) && \
-		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) E2E_ONLY="true" FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_PREV_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_PREV_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) \
+		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) E2E_ONLY="false" FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_PREV_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_PREV_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) \
 		GO_TESTFLAGS="$(GO_TESTFLAGS_INTEGRATION)" \
 		$(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) -f docker-compose-nopkcs11-test.yaml up $(DOCKER_COMPOSE_UP_TEST_FLAGS)
 	@cd $(FIXTURE_DOCKERENV_PATH) && FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) $(FIXTURE_SCRIPTS_PATH)/check_status.sh "$(BASE_DOCKER_COMPOSE_FILES) -f ./docker-compose-nopkcs11-test.yaml"
@@ -347,25 +350,21 @@ integration-tests-devstable: clean-tests depend-noforce populate-noforce populat
 integration-tests-stable-negative: clean-tests depend-noforce populate-noforce
 	@. $(FIXTURE_DOCKERENV_PATH)/stable-env.sh && \
 	    . $(FIXTURE_CRYPTOCONFIG_PATH)/env.sh && \
-		$(FABRIC_DEV_REGISTRY_PRE_CMD) && \
 		cd $(FIXTURE_DOCKERENV_PATH) && \
-		FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) $(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) pull $(DOCKER_COMPOSE_PULL_FLAGS) && \
-		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) \
+		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) \
 		GO_TESTFLAGS="$(GO_TESTFLAGS_INTEGRATION)" \
 		$(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) -f docker-compose-negative.yaml up $(DOCKER_COMPOSE_UP_TEST_FLAGS)
-	@cd $(FIXTURE_DOCKERENV_PATH) && FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) $(FIXTURE_SCRIPTS_PATH)/check_status.sh "$(BASE_DOCKER_COMPOSE_FILES) -f ./docker-compose-negative.yaml"
+	@cd $(FIXTURE_DOCKERENV_PATH) && FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) $(FIXTURE_SCRIPTS_PATH)/check_status.sh "$(BASE_DOCKER_COMPOSE_FILES) -f ./docker-compose-negative.yaml"
 
 .PHONY: integration-tests-stable-pkcs11
 integration-tests-stable-pkcs11: clean-tests depend-noforce populate-noforce
 	@. $(FIXTURE_DOCKERENV_PATH)/stable-env.sh && \
 	    . $(FIXTURE_CRYPTOCONFIG_PATH)/env.sh && \
-		$(FABRIC_DEV_REGISTRY_PRE_CMD) && \
 		cd $(FIXTURE_DOCKERENV_PATH) && \
-		FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) $(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) pull $(DOCKER_COMPOSE_PULL_FLAGS) && \
-		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) \
+		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) \
 		GO_TESTFLAGS="$(GO_TESTFLAGS_INTEGRATION)" \
 		$(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) -f docker-compose-pkcs11-test.yaml up $(DOCKER_COMPOSE_UP_TEST_FLAGS)
-	@cd $(FIXTURE_DOCKERENV_PATH) && FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) $(FIXTURE_SCRIPTS_PATH)/check_status.sh "$(BASE_DOCKER_COMPOSE_FILES) -f ./docker-compose-pkcs11-test.yaml"
+	@cd $(FIXTURE_DOCKERENV_PATH) && FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) $(FIXTURE_SCRIPTS_PATH)/check_status.sh "$(BASE_DOCKER_COMPOSE_FILES) -f ./docker-compose-pkcs11-test.yaml"
 
 # Additional test cases that aren't currently run by the CI
 .PHONY: integration-tests-devstable-nomutualtls
@@ -429,10 +428,8 @@ integration-tests-local: clean-tests-temp depend-noforce populate-noforce
 integration-tests-stable-local: clean-tests-temp depend-noforce populate-noforce
 	@. $(FIXTURE_DOCKERENV_PATH)/stable-env.sh && \
 	    . $(FIXTURE_CRYPTOCONFIG_PATH)/env.sh && \
-		$(FABRIC_DEV_REGISTRY_PRE_CMD) && \
 		cd $(FIXTURE_DOCKERENV_PATH) && \
-		FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) $(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) pull $(DOCKER_COMPOSE_PULL_FLAGS) && \
-		FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) \
+		FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) \
 		TEST_CHANGED_ONLY=$(FABRIC_SDKGO_TEST_CHANGED) GO_TESTFLAGS="$(GO_TESTFLAGS_INTEGRATION)" \
 		$(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) up $(DOCKER_COMPOSE_UP_BACKGROUND_FLAGS)
 	FABRIC_CRYPTOCONFIG_VERSION=$(FABRIC_CRYPTOCONFIG_VER) FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_CODELEVEL_TAG) TEST_LOCAL=true  $(TEST_SCRIPTS_PATH)/integration.sh
@@ -464,10 +461,8 @@ dockerenv-prev-up: clean-tests populate-fixtures-prev-noforce
 dockerenv-stable-up: clean-tests populate-fixtures-stable-noforce
 	@. $(FIXTURE_DOCKERENV_PATH)/stable-env.sh && \
 	    . $(FIXTURE_CRYPTOCONFIG_PATH)/env.sh && \
-		$(FABRIC_DEV_REGISTRY_PRE_CMD) && \
 		cd $(FIXTURE_DOCKERENV_PATH) && \
-		FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) $(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) pull $(DOCKER_COMPOSE_PULL_FLAGS) && \
-		FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_DEV_REGISTRY) \
+		FABRIC_SDKGO_CODELEVEL_VER=$(FABRIC_STABLE_CODELEVEL_VER) FABRIC_SDKGO_CODELEVEL_TAG=$(FABRIC_STABLE_CODELEVEL_TAG) FABRIC_DOCKER_REGISTRY=$(FABRIC_RELEASE_REGISTRY) \
 		$(DOCKER_COMPOSE_CMD) $(BASE_DOCKER_COMPOSE_FILES) up $(DOCKER_COMPOSE_UP_STANDALONE_FLAGS)
 
 .PHONY: dockerenv-prerelease-up
@@ -510,17 +505,17 @@ mock-gen:
 crypto-gen:
 	@echo "Generating crypto directory ..."
 	@$(DOCKER_CMD) run -i \
-		-v $(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
+		-v /$(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
 		$(FABRIC_TOOLS_IMAGE):$(FABRIC_TOOLS_TAG) \
-		/bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_CRYPTOCONFIG_VER) /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_crypto.sh"
+		//bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_CRYPTOCONFIG_VER) /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_crypto.sh"
 
 .PHONY: channel-config-gen
 channel-config-gen:
 	@echo "Generating test channel configuration transactions and blocks ..."
 	@$(DOCKER_CMD) run -i \
-		-v $(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
+		-v /$(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
 		$(FABRIC_TOOLS_IMAGE):$(FABRIC_TOOLS_TAG) \
-		/bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
+		//bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
 
 .PHONY: channel-config-all-gen
 channel-config-all-gen: channel-config-stable-gen channel-config-prev-gen channel-config-prerelease-gen channel-config-devstable-gen
@@ -529,26 +524,26 @@ channel-config-all-gen: channel-config-stable-gen channel-config-prev-gen channe
 channel-config-stable-gen:
 	@echo "Generating test channel configuration transactions and blocks (code level stable) ..."
 	@$(DOCKER_CMD) run -i \
-		-v $(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
+		-v /$(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
 		$(FABRIC_TOOLS_IMAGE):$(FABRIC_TOOLS_STABLE_TAG) \
-		/bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_STABLE_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
+		//bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_STABLE_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
 
 .PHONY: channel-config-prev-gen
 channel-config-prev-gen:
 	@echo "Generating test channel configuration transactions and blocks (code level prev) ..."
 	$(DOCKER_CMD) run -i \
-		-v $(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
+		-v /$(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
 		$(FABRIC_TOOLS_IMAGE):$(FABRIC_TOOLS_PREV_TAG) \
-		/bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_PREV_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
+		//bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_PREV_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
 
 .PHONY: channel-config-prerelease-gen
 channel-config-prerelease-gen:
 ifneq ($(FABRIC_PRERELEASE_VERSION),)
 	@echo "Generating test channel configuration transactions and blocks (code level prerelease) ..."
 	$(DOCKER_CMD) run -i \
-		-v $(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
+		-v /$(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
 		$(FABRIC_TOOLS_IMAGE):$(FABRIC_TOOLS_PRERELEASE_TAG) \
-		/bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_PRERELEASE_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
+		//bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_PRERELEASE_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
 endif
 
 .PHONY: channel-config-devstable-gen
@@ -557,9 +552,9 @@ ifeq ($(ARCH),x86_64)
 	@echo "Generating test channel configuration transactions and blocks (code level devstable) ..."
 	@$(FABRIC_DEV_REGISTRY_PRE_CMD) && \
 		$(DOCKER_CMD) run -i \
-			-v $(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
+			-v /$(abspath .):/opt/gopath/src/$(PACKAGE_NAME) -u $(shell id -u):$(shell id -g) \
 			$(FABRIC_DEV_REGISTRY)$(FABRIC_TOOLS_IMAGE):$(FABRIC_TOOLS_DEVSTABLE_TAG) \
-			/bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_DEVSTABLE_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
+			//bin/bash -c "FABRIC_VERSION_DIR=fabric/$(FABRIC_DEVSTABLE_CODELEVEL_VER)/ /opt/gopath/src/${PACKAGE_NAME}/test/scripts/generate_channeltx.sh"
 endif
 
 .PHONY: thirdparty-pin

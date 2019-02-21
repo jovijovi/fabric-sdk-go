@@ -8,6 +8,7 @@ package fab
 
 import (
 	"crypto/x509"
+	"time"
 
 	"github.com/hyperledger/fabric-sdk-go/pkg/common/errors/retry"
 )
@@ -37,6 +38,7 @@ type ChannelPolicies struct {
 	QueryChannelConfig QueryChannelConfigPolicy
 	Discovery          DiscoveryPolicy
 	Selection          SelectionPolicy
+	EventService       EventServicePolicy
 }
 
 //QueryChannelConfigPolicy defines policy for channelConfigBlock
@@ -139,4 +141,80 @@ type PeerConfig struct {
 type CertKeyPair struct {
 	Cert []byte
 	Key  []byte
+}
+
+// ResolverStrategy is the peer resolver type
+type ResolverStrategy string
+
+const (
+	// BalancedStrategy is a peer resolver strategy that chooses peers based on a configured load balancer
+	BalancedStrategy ResolverStrategy = "Balanced"
+
+	// MinBlockHeightStrategy is a peer resolver strategy that chooses the best peer according to a block height lag threshold.
+	// The maximum block height of all peers is determined and the peers whose block heights are under the maximum height but above
+	// a provided "lag" threshold are load balanced. The other peers are not considered.
+	MinBlockHeightStrategy ResolverStrategy = "MinBlockHeight"
+
+	// PreferOrgStrategy is a peer resolver strategy that determines which peers are suitable based on block height lag threshold,
+	// although will prefer the peers in the current org (as long as their block height is above a configured threshold).
+	// If none of the peers from the current org are suitable then a peer from another org is chosen.
+	PreferOrgStrategy ResolverStrategy = "PreferOrg"
+)
+
+// MinBlockHeightResolverMode specifies the behaviour of the MinBlockHeight resolver strategy.
+type MinBlockHeightResolverMode string
+
+const (
+	// ResolveByThreshold resolves to peers based on block height lag threshold.
+	ResolveByThreshold MinBlockHeightResolverMode = "ResolveByThreshold"
+
+	// ResolveLatest resolves to peers with the most up-to-date block height
+	ResolveLatest MinBlockHeightResolverMode = "ResolveLatest"
+)
+
+// EnabledDisabled specifies whether or not a feature is enabled
+type EnabledDisabled string
+
+const (
+	// Enabled indicates that the feature is enabled.
+	Enabled EnabledDisabled = "Enabled"
+
+	// Disabled indicates that the feature is disabled.
+	Disabled EnabledDisabled = "Disabled"
+)
+
+// EventServicePolicy specifies the policy for the event service
+type EventServicePolicy struct {
+	// ResolverStrategy returns the peer resolver strategy to use when connecting to a peer
+	// Default: MinBlockHeightPeerResolver
+	ResolverStrategy ResolverStrategy
+
+	// Balancer is the balancer to use when choosing a peer to connect to
+	Balancer BalancerType
+
+	// MinBlockHeightResolverMode specifies the behaviour of the MinBlockHeight resolver. Note that this
+	// parameter is used when ResolverStrategy is either MinBlockHeightStrategy or PreferOrgStrategy.
+	// ResolveByThreshold (default): resolves to peers based on block height lag threshold, as specified by BlockHeightLagThreshold.
+	// MinBlockHeightResolverMode: then only the peers with the latest block heights are chosen.
+	MinBlockHeightResolverMode MinBlockHeightResolverMode
+
+	// BlockHeightLagThreshold returns the block height lag threshold. This value is used for choosing a peer
+	// to connect to. If a peer is lagging behind the most up-to-date peer by more than the given number of
+	// blocks then it will be excluded from selection.
+	BlockHeightLagThreshold int
+
+	// PeerMonitor indicates whether or not to enable the peer monitor.
+	PeerMonitor EnabledDisabled
+
+	// ReconnectBlockHeightLagThreshold - if >0 then the event client will disconnect from the peer if the peer's
+	// block height falls behind the specified number of blocks and will reconnect to a better performing peer.
+	// If set to 0 (default) then the peer will not disconnect based on block height.
+	// NOTE: Setting this value too low may cause the event client to disconnect/reconnect too frequently, thereby
+	// affecting performance.
+	ReconnectBlockHeightLagThreshold int
+
+	// PeerMonitorPeriod is the period in which the connected peer is monitored to see if
+	// the event client should disconnect from it and reconnect to another peer.
+	// If set to 0 then the peer will not be monitored and will not be disconnected.
+	PeerMonitorPeriod time.Duration
 }

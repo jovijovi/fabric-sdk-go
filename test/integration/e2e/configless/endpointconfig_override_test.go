@@ -100,6 +100,13 @@ var (
 						BackoffFactor:  2.0,
 					},
 				},
+				EventService: fab.EventServicePolicy{
+					ResolverStrategy:                 fab.MinBlockHeightStrategy,
+					MinBlockHeightResolverMode:       fab.ResolveByThreshold,
+					BlockHeightLagThreshold:          5,
+					ReconnectBlockHeightLagThreshold: 10,
+					PeerMonitorPeriod:                5 * time.Second,
+				},
 			},
 		},
 		"orgchannel": {
@@ -134,15 +141,15 @@ var (
 	}
 	orgsConfig = map[string]fab.OrganizationConfig{
 		"org1": {
-			MSPID:      "Org1MSP",
-			CryptoPath: "peerOrganizations/org1.example.com/users/{username}@org1.example.com/msp",
-			Peers:      []string{"peer0.org1.example.com"},
+			MSPID:                  "Org1MSP",
+			CryptoPath:             "peerOrganizations/org1.example.com/users/{username}@org1.example.com/msp",
+			Peers:                  []string{"peer0.org1.example.com"},
 			CertificateAuthorities: []string{"ca.org1.example.com"},
 		},
 		"org2": {
-			MSPID:      "Org2MSP",
-			CryptoPath: "peerOrganizations/org1.example.com/users/{username}@org2.example.com/msp",
-			Peers:      []string{"peer0.org2.example.com"},
+			MSPID:                  "Org2MSP",
+			CryptoPath:             "peerOrganizations/org1.example.com/users/{username}@org2.example.com/msp",
+			Peers:                  []string{"peer0.org2.example.com"},
 			CertificateAuthorities: []string{"ca.org2.example.com"},
 		},
 		"ordererorg": {
@@ -263,21 +270,20 @@ var (
 	}
 
 	// creating instances of each interface to be referenced in the integration tests:
-	timeoutImpl            = &exampleTimeout{}
-	orderersConfigImpl     = newOrderersConfigImpl()
-	ordererConfigImpl      = &exampleOrdererConfig{}
-	peersConfigImpl        = newPeersConfigImpl()
-	peerConfigImpl         = &examplePeerConfig{}
-	networkConfigImpl      = &exampleNetworkConfig{}
-	networkPeersImpl       = &exampleNetworkPeers{}
-	channelConfigImpl      = &exampleChannelConfig{}
-	channelPeersImpl       = &exampleChannelPeers{}
-	channelOrderersImpl    = &exampleChannelOrderers{}
-	tlsCACertPoolImpl      = newTLSCACertPool(false)
-	eventServiceConfigImpl = &exampleEventServiceConfig{}
-	tlsClientCertsImpl     = &exampleTLSClientCerts{}
-	cryptoConfigPathImpl   = &exampleCryptoConfigPath{}
-	endpointConfigImpls    = []interface{}{
+	timeoutImpl          = &exampleTimeout{}
+	orderersConfigImpl   = newOrderersConfigImpl()
+	ordererConfigImpl    = &exampleOrdererConfig{}
+	peersConfigImpl      = newPeersConfigImpl()
+	peerConfigImpl       = &examplePeerConfig{}
+	networkConfigImpl    = &exampleNetworkConfig{}
+	networkPeersImpl     = &exampleNetworkPeers{}
+	channelConfigImpl    = &exampleChannelConfig{}
+	channelPeersImpl     = &exampleChannelPeers{}
+	channelOrderersImpl  = &exampleChannelOrderers{}
+	tlsCACertPoolImpl    = newTLSCACertPool(false)
+	tlsClientCertsImpl   = &exampleTLSClientCerts{}
+	cryptoConfigPathImpl = &exampleCryptoConfigPath{}
+	endpointConfigImpls  = []interface{}{
 		timeoutImpl,
 		orderersConfigImpl,
 		ordererConfigImpl,
@@ -289,7 +295,6 @@ var (
 		channelPeersImpl,
 		channelOrderersImpl,
 		tlsCACertPoolImpl,
-		eventServiceConfigImpl,
 		tlsClientCertsImpl,
 		cryptoConfigPathImpl,
 	}
@@ -578,7 +583,7 @@ func (m *exampleNetworkPeers) verifyPeerConfig(p fab.PeerConfig, peerName string
 type exampleChannelConfig struct{}
 
 // ChannelConfig overrides EndpointConfig's ChannelConfig function which returns the channelConfig instance for the channel name arg
-func (m *exampleChannelConfig) ChannelConfig(channelName string) (*fab.ChannelEndpointConfig, bool) {
+func (m *exampleChannelConfig) ChannelConfig(channelName string) *fab.ChannelEndpointConfig {
 	ch, ok := channelsConfig[strings.ToLower(channelName)]
 	if !ok {
 		// EntityMatchers are not used in this implementation, below is an example of how to use them if needed
@@ -587,10 +592,10 @@ func (m *exampleChannelConfig) ChannelConfig(channelName string) (*fab.ChannelEn
 		//	return nil, errors.WithMessage(matchErr, "channel config not found")
 		//}
 		//return matchingChannel, nil
-		return nil, false
+		return &fab.ChannelEndpointConfig{}
 	}
 
-	return &ch, true
+	return &ch
 }
 
 type exampleChannelPeers struct {
@@ -598,7 +603,7 @@ type exampleChannelPeers struct {
 }
 
 // ChannelPeers overrides EndpointConfig's ChannelPeers function which returns the list of peers for the channel name arg
-func (m *exampleChannelPeers) ChannelPeers(channelName string) ([]fab.ChannelPeer, bool) {
+func (m *exampleChannelPeers) ChannelPeers(channelName string) []fab.ChannelPeer {
 	peers := []fab.ChannelPeer{}
 
 	chConfig, ok := channelsConfig[strings.ToLower(channelName)]
@@ -611,7 +616,7 @@ func (m *exampleChannelPeers) ChannelPeers(channelName string) ([]fab.ChannelPee
 		//
 		//// reset 'name' with the mappedChannel as it's referenced further below
 		//chConfig = *matchingChannel
-		return nil, false
+		return nil
 	}
 
 	for peerName, chPeerConfig := range chConfig.Peers {
@@ -625,16 +630,16 @@ func (m *exampleChannelPeers) ChannelPeers(channelName string) ([]fab.ChannelPee
 			//	continue
 			//}
 			//p = *matchingPeerConfig
-			return nil, false
+			return nil
 		}
 
 		if err := m.verifyPeerConfig(p, peerName, endpoint.IsTLSEnabled(p.URL)); err != nil {
-			return nil, false
+			return nil
 		}
 
 		mspID, ok := PeerMSPID(peerName)
 		if !ok {
-			return nil, false
+			return nil
 		}
 
 		networkPeer := fab.NetworkPeer{PeerConfig: p, MSPID: mspID}
@@ -644,7 +649,7 @@ func (m *exampleChannelPeers) ChannelPeers(channelName string) ([]fab.ChannelPee
 		peers = append(peers, peer)
 	}
 
-	return peers, true
+	return peers
 
 }
 
@@ -661,26 +666,23 @@ func (m *exampleChannelPeers) verifyPeerConfig(p fab.PeerConfig, peerName string
 type exampleChannelOrderers struct{}
 
 // ChannelOrderers overrides EndpointConfig's ChannelOrderers function which returns the list of orderers for the channel name arg
-func (m *exampleChannelOrderers) ChannelOrderers(channelName string) ([]fab.OrdererConfig, bool) {
+func (m *exampleChannelOrderers) ChannelOrderers(channelName string) []fab.OrdererConfig {
 	// referencing other interfaces to call ChannelConfig and OrdererConfig to match config yaml content
 	chCfg := &exampleChannelConfig{}
 	oCfg := &exampleOrdererConfig{}
 
 	orderers := []fab.OrdererConfig{}
-	channel, ok := chCfg.ChannelConfig(channelName)
-	if !ok || channel == nil {
-		return nil, false
-	}
+	channel := chCfg.ChannelConfig(channelName)
 
 	for _, chOrderer := range channel.Orderers {
 		orderer, ok := oCfg.OrdererConfig(chOrderer)
 		if !ok || orderer == nil {
-			return nil, false
+			return nil
 		}
 		orderers = append(orderers, *orderer)
 	}
 
-	return orderers, true
+	return orderers
 }
 
 type exampleTLSCACertPool struct {
@@ -701,35 +703,6 @@ func newTLSCACertPool(useSystemCertPool bool) *exampleTLSCACertPool {
 // TLSCACertPool overrides EndpointConfig's TLSCACertPool function which will add the list of cert args to the cert pool and return it
 func (m *exampleTLSCACertPool) TLSCACertPool() fab.CertPool {
 	return m.tlsCertPool
-}
-
-type exampleEventServiceConfig struct{}
-
-func (m *exampleEventServiceConfig) EventServiceConfig() fab.EventServiceConfig {
-	return &eventServiceConfig{}
-}
-
-type eventServiceConfig struct {
-}
-
-func (c *eventServiceConfig) ResolverStrategy() fab.ResolverStrategy {
-	return fab.BalancedStrategy
-}
-
-func (c *eventServiceConfig) Balancer() fab.BalancerType {
-	return fab.Random
-}
-
-func (c *eventServiceConfig) BlockHeightLagThreshold() int {
-	return 5
-}
-
-func (c *eventServiceConfig) ReconnectBlockHeightLagThreshold() int {
-	return 10
-}
-
-func (c *eventServiceConfig) PeerMonitorPeriod() time.Duration {
-	return 5 * time.Second
 }
 
 type exampleTLSClientCerts struct {

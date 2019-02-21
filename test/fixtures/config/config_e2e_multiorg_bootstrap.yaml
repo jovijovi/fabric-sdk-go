@@ -42,7 +42,7 @@ client:
       # Specific to the underlying KeyValueStore that backs the crypto key store.
       path: /tmp/msp
 
-   # BCCSP config for the client. Used by GO SDK.
+  # [Optional] BCCSP config for the client. Used by GO SDK.
   BCCSP:
     security:
      enabled: true
@@ -129,6 +129,7 @@ organizations:
 peers:
   # defining bootstrap peers only
   peer0.org1.example.com:
+    # [Optional] Default: Infer from hostname
     url: peer0.org1.example.com:7051
 
     grpcOptions:
@@ -164,6 +165,7 @@ peers:
 orderers:
   # needed to fetch the ordrerer config for create channel
   orderer.example.com:
+    # [Optional] Default: Infer from hostname
     url: orderer.example.com:7050
 
     grpcOptions:
@@ -182,7 +184,7 @@ orderers:
  # so that properties can be mapped. Regex can be used for this purpose
 # UrlSubstitutionExp can be empty which means the same network hostname will be used
 # UrlSubstitutionExp can be given same as mapped peer url, so that mapped peer url can be used
-# UrlSubstitutionExp can have golang regex matchers like $1.local.example.$2:$3 for pattern
+# UrlSubstitutionExp can have golang regex matchers like ${1}.local.example.${2}:${3} for pattern
  # like peer0.org1.example.com:1234 which converts peer0.org1.example.com to peer0.org1.local.example.com:1234
 # sslTargetOverrideUrlSubstitutionExp follow in the same lines as
  # SubstitutionExp for the fields gprcOptions.ssl-target-name-override respectively
@@ -192,11 +194,11 @@ entityMatchers:
     # the below matcher will allow dynamic discovery to use the anchor peer (peer0.org1.example.com)
     # as a template for all org1 discovered peers config
     - pattern: (\w+).org1.example.com:(\d+)
-      urlSubstitutionExp: $1.org1.example.com:$2
-      sslTargetOverrideUrlSubstitutionExp: $1.org1.example.com
+      urlSubstitutionExp: ${1}.org1.example.com:${2}
+      sslTargetOverrideUrlSubstitutionExp: ${1}.org1.example.com
       mappedHost: peer0.org1.example.com
 
     - pattern: (\w+).org2.example.com:(\d+)
-      urlSubstitutionExp: $1.org2.example.com:$2
-      sslTargetOverrideUrlSubstitutionExp: $1.org2.example.com
+      urlSubstitutionExp: ${1}.org2.example.com:${2}
+      sslTargetOverrideUrlSubstitutionExp: ${1}.org2.example.com
       mappedHost: peer0.org2.example.com

@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 package channel
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -267,14 +268,22 @@ func TestCCToCC(t *testing.T) {
 				),
 			),
 		)
-		_, err = chClient.InvokeHandler(
-			handler,
-			channel.Request{
-				ChaincodeID: cc1ID,
-				Fcn:         "invokecc",
-				Args:        [][]byte{[]byte(cc2ID), []byte(`{"Args":["invoke","set","x1","y1"]}`)},
+		_, err = retry.NewInvoker(retry.New(retry.TestRetryOpts)).Invoke(
+			func() (interface{}, error) {
+				b, e := chClient.InvokeHandler(
+					handler,
+					channel.Request{
+						ChaincodeID: cc1ID,
+						Fcn:         "invokecc",
+						Args:        [][]byte{[]byte(cc2ID), []byte(`{"Args":["invoke","set","x1","y1"]}`)},
+					},
+					channel.WithRetry(retry.DefaultChannelOpts),
+				)
+				if e != nil && strings.Contains(e.Error(), "500") {
+					return nil, status.New(status.TestStatus, status.GenericTransient.ToInt32(), fmt.Sprintf("invokecc with policy returned unexpected error: %v", e), nil)
+				}
+				return b, e
 			},
-			channel.WithRetry(retry.DefaultChannelOpts),
 		)
 		require.Errorf(t, err, "expecting transaction to fail due to endorsement policy not being satisfied")
 		stat, ok := status.FromError(err)
@@ -335,14 +344,20 @@ func testQuery(t *testing.T, chClient *channel.Client, expected string, ccID, ke
 	for r := 0; r < 10; r++ {
 		response, err := chClient.Query(channel.Request{ChaincodeID: ccID, Fcn: "invoke", Args: integration.ExampleCCQueryArgs(key)},
 			channel.WithRetry(retry.DefaultChannelOpts))
-		require.NoError(t, err, "failed to invoke example cc")
+		if err == nil {
+			actual := string(response.Payload)
+			if actual == expected {
+				return
+			}
 
-		actual := string(response.Payload)
-		if actual == expected {
-			return
+			t.Logf("On Attempt [%d / %d]: Response didn't match expected value [%s, %s]", r, maxRetries, actual, expected)
+		} else {
+			t.Logf("On Attempt [%d / %d]: failed to invoke example cc '%s' with Args:[%+v], error: %+v", r, maxRetries, ccID, integration.ExampleCCQueryArgs(key), err)
+			if r < 9 {
+				t.Logf("will retry in %v", retrySleep)
+			}
 		}
 
-		t.Logf("On Attempt [%d / %d]: Response didn't match expected value [%s, %s]", r, maxRetries, actual, expected)
 		time.Sleep(retrySleep)
 	}
 
@@ -616,13 +631,13 @@ func TestNoEndpoints(t *testing.T) {
 	expected1_1Err := "targets were not provided"                   // When running with 1.1 DynamicSelection
 	expected1_2Err := "no endorsement combination can be satisfied" // When running with 1.2 FabricSelection
 	if !strings.Contains(err.Error(), expected1_1Err) && !strings.Contains(err.Error(), expected1_2Err) {
-		t.Fatal("Should have failed due to no chaincode query peers")
+		t.Fatal("Query chaincode should have failed due to no chaincode query peers, error (if any): ", err)
 	}
 
 	// Test execute transaction: since peer has been disabled for endorsement this transaction should fail
 	_, err = chClient.Execute(channel.Request{ChaincodeID: mainChaincodeID, Fcn: "invoke", Args: integration.ExampleCCTxRandomSetArgs()},
 		channel.WithRetry(retry.DefaultChannelOpts))
 	if !strings.Contains(err.Error(), expected1_1Err) && !strings.Contains(err.Error(), expected1_2Err) {
-		t.Fatal("Should have failed due to no chaincode query peers")
+		t.Fatal("Execute chaincode should have failed due to no chaincode query peers, error (if any): ", err)
 	}
 }

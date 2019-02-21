@@ -48,7 +48,7 @@ function installGoDep {
 
 function installGoMetalinter {
     declare repo="github.com/alecthomas/gometalinter"
-    declare revision="v2"
+    declare revision="v2.0.12"
 
     declare pkg="github.com/alecthomas/gometalinter"
 
@@ -89,7 +89,7 @@ function installGoPkg {
         echo "  using tag ${revision}"
     fi
     (cd ${BUILD_TMP}/src/${repo} && git reset --hard ${revision})
-    GOPATH=${BUILD_TMP} go install -i ${repo}/${pkgPath}
+    GOPATH=${BUILD_TMP} GOBIN=${BUILD_TMP}/bin go install -i ${repo}/${pkgPath}
 
     mkdir -p ${GOPATH}/bin
     for cmd in ${cmds[@]}
@@ -101,7 +101,8 @@ function installGoPkg {
 
 function isScriptCurrent {
     declare filesModified=$(git diff --name-only --diff-filter=ACMRTUXBD HEAD | tr '\n' ' ' | xargs)
-    if [[ "${filesModified}" =~ ( |^)(test/scripts/dependencies.sh)( |$) ]]; then
+    declare matcher='( |^)(test/scripts/dependencies.sh)( |$)'
+    if [[ "${filesModified}" =~ ${matcher} ]]; then
         echo "Dependencies script modified - will need to install dependencies"
         return 1
     fi

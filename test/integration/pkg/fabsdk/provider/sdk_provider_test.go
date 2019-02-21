@@ -9,6 +9,7 @@ package provider
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/hyperledger/fabric-sdk-go/pkg/common/errors/status"
@@ -50,7 +51,7 @@ func TestDynamicSelection(t *testing.T) {
 
 	chaincodeID := integration.GenerateExampleID(false)
 	err = integration.PrepareExampleCC(sdk, fabsdk.WithUser("Admin"), testSetup.OrgID, chaincodeID)
-	require.Nil(t, err, "InstallAndInstantiateExampleCC return error")
+	require.NoError(t, err, "InstallAndInstantiateExampleCC returned error")
 
 	//prepare contexts
 	org1ChannelClientContext := sdk.ChannelContext(testSetup.ChannelID, fabsdk.WithUser(org1User), fabsdk.WithOrg(org1Name))
@@ -59,23 +60,30 @@ func TestDynamicSelection(t *testing.T) {
 	integration.ResetKeys(t, org1ChannelClientContext, chaincodeID, "200", aKey, bKey)
 
 	chClient, err := channel.New(org1ChannelClientContext)
-	if err != nil {
-		t.Fatalf("Failed to create new channel client: %s", err)
-	}
+	require.NoError(t, err, "Failed to create new channel client")
 
-	response, err := chClient.Query(channel.Request{ChaincodeID: chaincodeID, Fcn: "invoke", Args: queryArg},
-		channel.WithRetry(retry.DefaultChannelOpts))
-	if err != nil {
-		t.Fatalf("Failed to query funds: %s", err)
-	}
-	value := response.Payload
+	//response, err := chClient.Query(channel.Request{ChaincodeID: chaincodeID, Fcn: "invoke", Args: queryArg},
+	//	channel.WithRetry(retry.TestRetryOpts))
+	response, err := retry.NewInvoker(retry.New(retry.TestRetryOpts)).Invoke(
+		func() (interface{}, error) {
+			b, e := chClient.Query(channel.Request{ChaincodeID: chaincodeID, Fcn: "invoke", Args: queryArg},
+				channel.WithRetry(retry.TestRetryOpts))
+			if e != nil {
+				// return a retryable code if key/value query is nil (ie not propagated to all peers yet)
+				if strings.Contains(e.Error(), "Nil amount for") {
+					return nil, status.New(status.TestStatus, status.GenericTransient.ToInt32(), fmt.Sprintf("QueryBlock returned error: %v", e), nil)
+				}
+			}
+			return b, e
+		},
+	)
+	require.NoError(t, err, "Failed to query funds, ccID: %s, queryArgs: [%+v]", chaincodeID, queryArg)
+	value := response.(channel.Response).Payload
 
 	// Move funds
-	response, err = chClient.Execute(channel.Request{ChaincodeID: chaincodeID, Fcn: "invoke", Args: moveTxArg},
+	_, err = chClient.Execute(channel.Request{ChaincodeID: chaincodeID, Fcn: "invoke", Args: moveTxArg},
 		channel.WithRetry(retry.DefaultChannelOpts))
-	if err != nil {
-		t.Fatalf("Failed to move funds: %s", err)
-	}
+	require.NoError(t, err, "Failed to move funds, ccID: %s, queryArgs:[%+v]", chaincodeID, moveTxArg)
 
 	valueInt, _ := strconv.Atoi(string(value))
 	verifyValue(t, chClient, queryArg, valueInt+1, chaincodeID)

@@ -48,9 +48,10 @@ var (
 )
 
 const (
-	networkCfg  = "../../../test/fixtures/config/config_test.yaml"
-	configPath  = "../../core/config/testdata/config_test.yaml"
-	testAddress = "127.0.0.1:0"
+	networkCfg               = "../../../test/fixtures/config/config_test.yaml"
+	networkCfgWithoutOrderer = "../../../test/fixtures/config/config_test_without_orderer.yaml"
+	configPath               = "../../core/config/testdata/config_test.yaml"
+	testAddress              = "127.0.0.1:0"
 )
 
 func withLocalContextProvider(provider context.LocalProvider) ClientOption {
@@ -343,7 +344,7 @@ func TestJoinChannelNoOrdererConfig(t *testing.T) {
 
 	err = rc.JoinChannel("mychannel", WithTargets(peer1))
 	assert.NotNil(t, err, "Should have failed to join channel since no orderer has been configured")
-	assert.Contains(t, err.Error(), "orderer not found: orderers lookup failed")
+	assert.Contains(t, err.Error(), "orderer not found: no orderers found")
 
 	// Misconfigured channel orderer
 	configBackend = getInvalidChannelOrdererBackend(backend...)
@@ -457,6 +458,24 @@ func TestQueryInstantiatedChaincodes(t *testing.T) {
 	_, err = rc.QueryInstantiatedChaincodes("mychannel", WithTargets(peer))
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestQueryCollectionsConfig(t *testing.T) {
+	rc := setupDefaultResMgmtClient(t)
+
+	_, err := rc.QueryCollectionsConfig("mychannel", "mychaincode")
+	if err == nil {
+		t.Fatal("QueryInstalledChaincodes: peer cannot be nil")
+	}
+
+	peer := &fcmocks.MockPeer{MockName: "Peer1", MockURL: "http://peer1.com", MockRoles: []string{}, MockCert: nil, MockMSP: "Org1MSP", Status: http.StatusOK}
+	coll, err := rc.QueryCollectionsConfig("mychannel", "mychaincode", WithTargets(peer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(coll.Config) != 0 {
+		t.Fatalf("There is no collection configuration on peer")
 	}
 }
 
@@ -1021,6 +1040,20 @@ func getNetworkConfig(t *testing.T) fab.EndpointConfig {
 	return config
 }
 
+func getNetworkConfigWithoutOrderer(t *testing.T) fab.EndpointConfig {
+	configBackend, err := configImpl.FromFile(networkCfgWithoutOrderer)()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := fabImpl.ConfigFromBackend(configBackend...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return config
+}
+
 func TestSaveChannelSuccess(t *testing.T) {
 
 	mb := fcmocks.MockBroadcastServer{}
@@ -1103,11 +1136,9 @@ func TestSaveChannelSuccess(t *testing.T) {
 func TestSaveChannelFailure(t *testing.T) {
 
 	// Set up context with error in create channel
-	user := mspmocks.NewMockSigningIdentity("test", "test")
-	errCtx := fcmocks.NewMockContext(user)
-	network := getNetworkConfig(t)
-	errCtx.SetEndpointConfig(network)
+	network := getNetworkConfigWithoutOrderer(t)
 	fabCtx := setupTestContext("user", "Org1Msp1")
+	fabCtx.SetEndpointConfig(network)
 
 	cc, err := New(createClientContext(fabCtx))
 	if err != nil {

@@ -40,8 +40,8 @@ You're good to go, happy coding! Check out the examples for usage demonstrations
 
 ### Current Compatibility
 The SDK's integration tests run against three tagged Fabric versions:
-- prev (currently v1.1.0)
-- stable (currently v1.2.0)
+- prev (currently v1.3.0)
+- stable (currently v1.4.0)
 - prerelease (currently disabled)
 
 Additionally for development purposes integration tests also run against the devstable Fabric version as needed.
@@ -49,8 +49,17 @@ Additionally for development purposes integration tests also run against the dev
 ### Retired versions
 When the 'prev' code level is updated, the last tested fabric-sdk-go commit or tag is listed below.
 
-- fabric v1.0 & fabric-ca v1.0
-  - fabric-sdk-go: 5ac5226
+- fabric v1.2: 5e291d3
+- fabric v1.1: f7ae259
+- fabric v1.0: 5ac5226
+
+### Auth Token payload compatibility between Fabric CA v1.4 and earlier releases
+Fabric CA v1.4 introduced a more secure Auth Token payload signing which requires a non compatible update.
+In order to maintain compatibility with Fabric CA v1.3, the CA client queries the server to fetch the version and 
+determine if compatibility with pre v1.4 is required.
+
+Once v1.3 is retired, the above client code logic will need to be removed as well. No change is required from the Go SDK users.
+
 
 ### Running the test suite
 
@@ -78,12 +87,13 @@ If you want to contribute to the Go SDK, please run the test suite and submit pa
 
 You need:
 
-- Go 1.9
+- Go 1.11
 - [Dep](https://github.com/golang/dep)
 - Make
 - Docker
 - Docker Compose
 - Git
+- libtool
 
 ### Gerrit Git repository
 
@@ -163,10 +173,10 @@ make integration-tests-local
 # which has the Fabric CA server, orderer and peers pointed to localhost
 # It is also possible to run integration tests using go test directly. For example:
 #cd $GOPATH/src/github.com/hyperledger/fabric-sdk-go/test/integration/
-#go -args testLocal=true test
+#go test -args testLocal=true
 
 #cd $GOPATH/src/github.com/hyperledger/fabric-sdk-go/test/integration/orgs
-#go -args testLocal=true test
+#go test -args testLocal=true 
 
 # You should review test/scripts/integration.sh for options and details.
 # Note: you should generally prefer the scripted version to setup parameters for you.

@@ -187,6 +187,12 @@ func GetConfigOverridesPath(filename string) string {
 	return path.Join(goPath(), "src", metadata.Project, configPath, "overrides", filename)
 }
 
+// GetCryptoConfigPath returns the path to the named crypto-config override fixture file
+func GetCryptoConfigPath(filename string) string {
+	const configPath = "test/fixtures/fabric/v1/crypto-config"
+	return path.Join(goPath(), "src", metadata.Project, configPath, filename)
+}
+
 // goPath returns the current GOPATH. If the system
 // has multiple GOPATHs then the first is used.
 func goPath() string {
@@ -308,6 +314,27 @@ func InstantiateChaincode(resMgmt *resmgmt.Client, channelID, ccName, ccPath, cc
 	return resMgmt.InstantiateCC(
 		channelID,
 		resmgmt.InstantiateCCRequest{
+			Name:       ccName,
+			Path:       ccPath,
+			Version:    ccVersion,
+			Args:       args,
+			Policy:     ccPolicy,
+			CollConfig: collConfigs,
+		},
+		resmgmt.WithRetry(retry.DefaultResMgmtOpts),
+	)
+}
+
+// UpgradeChaincode upgrades the given chaincode on the given channel
+func UpgradeChaincode(resMgmt *resmgmt.Client, channelID, ccName, ccPath, ccVersion string, ccPolicyStr string, args [][]byte, collConfigs ...*cb.CollectionConfig) (resmgmt.UpgradeCCResponse, error) {
+	ccPolicy, err := cauthdsl.FromString(ccPolicyStr)
+	if err != nil {
+		return resmgmt.UpgradeCCResponse{}, errors.Wrapf(err, "error creating CC policy [%s]", ccPolicyStr)
+	}
+
+	return resMgmt.UpgradeCC(
+		channelID,
+		resmgmt.UpgradeCCRequest{
 			Name:       ccName,
 			Path:       ccPath,
 			Version:    ccVersion,
@@ -444,20 +471,16 @@ func GetKeyName(t *testing.T) string {
 //ResetKeys resets given set of keys in example cc to given value
 func ResetKeys(t *testing.T, ctx contextAPI.ChannelProvider, chaincodeID, value string, keys ...string) {
 	chClient, err := channel.New(ctx)
-	if err != nil {
-		t.Fatalf("Failed to create new channel client for reseting keys: %s", err)
-	}
+	require.NoError(t, err, "Failed to create new channel client for resetting keys")
 	for _, key := range keys {
 		// Synchronous transaction
-		_, err := chClient.Execute(
+		_, e := chClient.Execute(
 			channel.Request{
 				ChaincodeID: chaincodeID,
 				Fcn:         "invoke",
 				Args:        ExampleCCTxSetArgs(key, value),
 			},
 			channel.WithRetry(retry.DefaultChannelOpts))
-		if err != nil {
-			t.Fatalf("Failed to reset keys: %s", err)
-		}
+		require.NoError(t, e, "Failed to reset keys")
 	}
 }

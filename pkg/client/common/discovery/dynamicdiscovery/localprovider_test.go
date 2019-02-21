@@ -1,3 +1,5 @@
+// +build testing
+
 /*
 Copyright SecureKey Technologies Inc. All Rights Reserved.
 
@@ -65,9 +67,6 @@ type config struct {
 	peers []pfab.ChannelPeer
 }
 
-func (c *config) ChannelPeers(name string) ([]pfab.ChannelPeer, bool) {
-	if len(c.peers) == 0 {
-		return nil, false
-	}
-	return c.peers, true
+func (c *config) ChannelPeers(name string) []pfab.ChannelPeer {
+	return c.peers
 }

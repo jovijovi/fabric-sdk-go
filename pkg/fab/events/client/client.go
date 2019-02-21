@@ -38,7 +38,7 @@ const (
 // chaincode, and transaction status events. Client also monitors the connection to the
 // event server and attempts to reconnect if the connection is closed.
 type Client struct {
-	eventservice.Service
+	*eventservice.Service
 	params
 	sync.RWMutex
 	connEvent       chan *dispatcher.ConnectionEvent
@@ -57,7 +57,7 @@ func New(dispatcher eventservice.Dispatcher, opts ...options.Opt) *Client {
 	options.Apply(params, opts)
 
 	return &Client{
-		Service:         *eventservice.New(dispatcher, opts...),
+		Service:         eventservice.New(dispatcher, opts...),
 		params:          *params,
 		connectionState: int32(Disconnected),
 	}
@@ -363,13 +363,7 @@ func (c *Client) mustSetConnectionState(newState ConnectionState) {
 
 func (c *Client) monitorConnection() {
 	logger.Debug("Monitoring connection")
-	for {
-		event, ok := <-c.connEvent
-		if !ok {
-			logger.Debugln("Connection has closed.")
-			break
-		}
-
+	for event := range c.connEvent {
 		if c.Stopped() {
 			logger.Debugln("Event client has been stopped.")
 			break
@@ -382,6 +376,12 @@ func (c *Client) monitorConnection() {
 		} else if c.reconn {
 			logger.Warnf("Event client has disconnected. Details: %s", event.Err)
 			if c.setConnectionState(Connected, Disconnected) {
+				if event.Err.IsFatal() {
+					logger.Warnf("Reconnect is not possible due to fatal error. Terminating: %s", event.Err)
+					go c.Close()
+					break
+				}
+
 				logger.Warn("Attempting to reconnect...")
 				go c.reconnect()
 			} else if c.setConnectionState(Connecting, Disconnected) {
